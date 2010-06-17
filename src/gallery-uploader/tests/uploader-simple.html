@@ -1,0 +1,64 @@
+<html>
+<head>
+    <title>Uploader Tests</title>
+	<script type="text/javascript" src="http://yui.yahooapis.com/combo?3.1.1/build/yui/yui-min.js"></script>
+	<script type="text/javascript" src="../../../build/gallery-uploader/gallery-uploader.js"></script>
+</head>
+<body>
+<h1>SWF Tests</h1>
+<div id="testdiv" style="height:40px;width:100px">
+This content will be replaced by an instance of an Uploader.
+</div>
+<div id="uploadfilebutton"><input type="submit" id="uploadfile" value="Upload File"/></div>
+<div id="filename">File selected:</div>
+<div id="percentdone">Percent uploaded: </div>
+<script>
+
+YUI({ debug:true, filter:"raw" }).use('base', 'event', 'node', 'swf', 'gallery-uploader', function (Y) {
+
+Y.log("hello world");
+
+var newuploader = new Y.uploader({p_oElement:"#testdiv", 
+								  p_oAttributes: {swfURL:"../../../build/gallery-uploader/assets/uploader.swf",
+                                                  buttonSkin:"assets/selectFileButton.png"
+												 }
+								 });
+
+var setupUploader = function (event) {
+	newuploader.set("multiFiles", true);
+	newuploader.set("simLimit", 3);
+	newuploader.set("log", true);
+}
+
+var fileSelect = function (event) {
+	Y.log("File was selected, parsing...");
+	var fileData = event.fileList;
+	var output = "<div>Files selected:</div>";	
+	
+	for each (key in fileData) {
+		output += "<div id='" + key.id + "'>" + key.name + "</div>";
+	}
+	Y.one("#filename").setContent(output);
+}
+
+var updateProgress = function (event) {
+	Y.one("#percentdone").setContent("Percent done: " + (100 * event.bytesLoaded / event.bytesTotal) + "%");
+}
+
+var uploadFile = function (event) {
+	newuploader.upload(fileToBeUploaded.id, "http://www.yswfblog.com/upload/upload_simple.php");
+}
+
+newuploader.on("fileselect", fileSelect);
+newuploader.on("uploaderReady", setupUploader);
+newuploader.on("uploadprogress", updateProgress);
+Y.one("#uploadfile").on("click", uploadFile);
+
+
+
+});
+
+</script>
+
+</body>
+</html>
