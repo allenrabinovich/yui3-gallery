@@ -49,9 +49,9 @@ function uploader (config /*Object*/) {
 
 	if (p_oAttributes.hasOwnProperty("buttonSkin")) {
 		params.flashVars["buttonSkin"] = p_oAttributes["buttonSkin"];
-		if (p_oAttributes.hasOwnProperty("forceTransparent") && p_oAttributes["forceTransparent"]) {
-			params.fixedAttributes["wmode"] = "transparent";
-		}
+	}
+	if (p_oAttributes.hasOwnProperty("transparent") && p_oAttributes["transparent"]) {
+		params.fixedAttributes["wmode"] = "transparent";
 	}
 	
     this.uploaderswf = new Y.SWF(oElement, p_oAttributes.hasOwnProperty("swfURL")?p_oAttributes["swfURL"]:"assets/uploader.swf", params);
