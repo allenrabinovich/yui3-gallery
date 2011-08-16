@@ -6,6 +6,10 @@
 
 var Lang = A.Lang,
 
+	concat = function(arr, arr2) {
+		return (arr || []).concat(arr2 || []);
+	},
+
 	getClassName = A.ClassNameManager.getClassName,
 
 	NAME = 'component',
@@ -36,6 +40,8 @@ var Component = function(config) {
 
 	instance._originalConfig = config;
 
+	instance._setRender(config);
+
 	Component.superclass.constructor.apply(this, arguments);
 
 	INSTANCES[instance.get('id')] = instance;
@@ -62,6 +68,22 @@ Component.NAME = 'component';
  */
 Component.ATTRS = {
 	/**
+	* Boolean indicating if use of the WAI-ARIA Roles and States should be
+	* enabled for the Widget.
+	*
+	* @attribute useARIA
+	* @readOnly
+	* @writeOnce
+	* @default true
+	* @type boolean
+	*/
+	useARIA: {
+		writeOnce: true,
+		value: false,
+		validator: Lang.isBoolean
+	},
+
+	/**
 	 * CSS class to be automatically added to the <code>boundingBox</code>.
 	 *
 	 * @attribute cssClass
@@ -87,39 +109,12 @@ Component.ATTRS = {
 	},
 
 	/**
-	 * A Component that will fire the same events as the current Component.
-	 *
-	 * @attribute owner
-	 * @deprecated See <a href="WidgetParent.html">WidgetParent</a>.
-	 * @type Widget
-	 */
-	owner: {
-		validator: function(value) {
-			var instance = this;
-
-			return value instanceof A.Widget || value === null;
-		}
-	},
-
-	/**
-	 * When set to <code>true</code> the events on this Component are also
-     * fired on the <a href="Component.html#config_owner">owner</a> Component.
-	 *
-	 * @attribute relayEvents
-	 * @default true
-	 * @type boolean
-	 */
-	relayEvents: {
-		value: true
-	},
-
-	/**
 	 * If <code>true</code> the render phase will be autimatically invoked
      * preventing the <code>.render()</code> manual call.
 	 *
 	 * @attribute render
 	 * @default false
-	 * @type boolean
+	 * @type boolean | Node
 	 */
 	render: {
 		value: false,
@@ -144,15 +139,9 @@ A.extend(
 				instance._uiSetCssClass(config.cssClass);
 			}
 
-			instance._setOwnerComponent(instance.get('ownerComponent'));
-			instance._setRelayEvents(instance.get('relayEvents'));
-
 			instance._setComponentClassNames();
 
 			instance.after('cssClassChange', instance._afterCssClassChange);
-			instance.after('destroy', instance._afterComponentDestroy);
-			instance.after('ownerChange', instance._afterComponentOwnerChange);
-			instance.after('relayEventsChange', instance._afterComponentRelayEventsChange);
 			instance.after('visibleChange', instance._afterComponentVisibleChange);
 		},
 
@@ -185,51 +174,6 @@ A.extend(
 			var instance = this;
 
 			return instance.set('visible', !instance.get('visible'));
-		},
-
-		/**
-		 * Invoked after the destroy phase. Removes the
-         * <code>boundingBox</code> from the DOM.
-		 *
-		 * @method _afterComponentDestroy
-		 * @param {EventFacade} event
-		 * @protected
-		 */
-		_afterComponentDestroy: function(event) {
-			var instance = this;
-
-			try {
-				instance.get('boundingBox').remove();
-			}
-			catch (e) {}
-		},
-
-		/**
-		 * Fires after the value of the
-		 * <a href="Component.html#config_owner">owner</a> attribute change.
-		 *
-		 * @method _afterComponentOwnerChange
-		 * @param {EventFacade} event
-		 * @protected
-		 */
-		_afterComponentOwnerChange: function(event) {
-			var instance = this;
-
-			instance._setOwnerComponent(event.newVal);
-		},
-
-		/**
-		 * Fires after the value of the
-		 * <a href="Component.html#config_relayEvents">relayEvents</a> attribute change.
-		 *
-		 * @method _afterComponentRelayEventsChange
-		 * @param {EventFacade} event
-		 * @protected
-		 */
-		_afterComponentRelayEventsChange: function(event) {
-			var instance = this;
-
-			instance._setRelayEvents(event.newVal);
 		},
 
 		/**
@@ -273,21 +217,22 @@ A.extend(
 		},
 
 		/**
-		 * Fires the events onthe
-         * <a href="Component.html#config_owner">owner</a>.
+		 * Renders the Component based upon a passed in interaction.
 		 *
-		 * @method _relayEvents
+		 * @method _renderInteraction
 		 * @protected
 		 */
-		_relayEvents: function() {
+		_renderInteraction: function(event, parentNode) {
 			var instance = this;
 
-			Component.superclass.fire.apply(instance, arguments);
+			instance.render(parentNode);
 
-			var ownerComponent = instance._ownerComponent;
+			var renderHandles = instance._renderHandles;
 
-			if (ownerComponent) {
-				ownerComponent.fire.apply(ownerComponent, arguments);
+			for (var i = renderHandles.length - 1; i >= 0; i--) {
+				var handle = renderHandles.pop();
+
+				handle.detach();
 			}
 		},
 
@@ -314,36 +259,42 @@ A.extend(
 		},
 
 		/**
-		 * Setter for <a href="Component.html#config_relayEvents">relayEvents</a>.
+		 * Set the interaction and render behavior based upon an object
+		 * (intercepts the default rendering behavior).
 		 *
-		 * @method _setRelayEvents
+		 * @method _setRender
 		 * @protected
-		 * @param {boolean} relayEvents
 		 */
-		_setRelayEvents: function(relayEvents) {
+		_setRender: function(config) {
 			var instance = this;
 
-			if (relayEvents) {
-				instance.fire = instance._relayEvents;
-			}
-			else {
-				instance.fire = Component.superclass.fire;
-			}
-		},
+			var render = config && config.render;
 
-		/**
-		 * Setter for
-         * <a href="Component.html#property__ownerComponent">_ownerComponent</a>
-         * property.
-		 *
-		 * @method _setOwnerComponent
-		 * @private
-		 * @param {Widget} ownerComponent
-		 */
-		_setOwnerComponent: function(ownerComponent) {
-			var instance = this;
+			if (render && render.constructor == CONSTRUCTOR_OBJECT) {
+				var eventType = render.eventType || 'mousemove';
+				var parentNode = render.parentNode;
+				var selector = render.selector || parentNode;
 
-			instance._ownerComponent = ownerComponent;
+				if (selector) {
+					instance._renderHandles = [];
+
+					var renderHandles = instance._renderHandles;
+
+					if (!Lang.isArray(eventType)) {
+						eventType = [eventType];
+					}
+
+					var renderInteraction = A.rbind(instance._renderInteraction, instance, parentNode);
+
+					var interactionNode = A.one(selector);
+
+					 for (var i = eventType.length - 1; i >= 0; i--) {
+						renderHandles[i] = interactionNode.once(eventType[i], renderInteraction);
+					 }
+
+					delete config.render;
+				}
+			}
 		},
 
 		/**
@@ -377,6 +328,8 @@ Component.getById = function(id) {
 
 var COMP_PROTO = Component.prototype;
 
+var DEFAULT_UI_ATTRS = A.Widget.prototype._UI_ATTRS;
+
 Component.create = function(config) {
 	config = config || {};
 
@@ -392,17 +345,37 @@ Component.create = function(config) {
 
 	var configProto = config.prototype;
 
-	if (config.UI_ATTRS) {
-		configProto._BIND_UI_ATTRS = COMP_PROTO._BIND_UI_ATTRS.concat(config.UI_ATTRS);
-		configProto._SYNC_UI_ATTRS = COMP_PROTO._SYNC_UI_ATTRS.concat(config.UI_ATTRS);
+	if (configProto) {
+		if (config.UI_ATTRS || config.BIND_UI_ATTRS || config.SYNC_UI_ATTRS) {
+			var BIND_UI_ATTRS = concat(config.BIND_UI_ATTRS, config.UI_ATTRS);
+			var SYNC_UI_ATTRS = concat(config.SYNC_UI_ATTRS, config.UI_ATTRS);
+
+			var extendsProto = extendsClass.prototype;
+			var extendsUIAttrs = (extendsProto && extendsProto._UI_ATTRS) || DEFAULT_UI_ATTRS;
+
+			BIND_UI_ATTRS = concat(extendsUIAttrs.BIND, BIND_UI_ATTRS);
+			SYNC_UI_ATTRS = concat(extendsUIAttrs.SYNC, SYNC_UI_ATTRS);
+
+			var configProtoUIAttrs = configProto._UI_ATTRS;
+
+			if (!configProtoUIAttrs) {
+				configProtoUIAttrs = configProto._UI_ATTRS = {};
+			}
+
+			if (BIND_UI_ATTRS.length) {
+				configProtoUIAttrs.BIND = BIND_UI_ATTRS;
+			}
+
+			if (SYNC_UI_ATTRS.length) {
+				configProtoUIAttrs.SYNC = SYNC_UI_ATTRS;
+			}
+		}
 	}
 
-	if (config.BIND_UI_ATTRS) {
-		configProto._BIND_UI_ATTRS = COMP_PROTO._BIND_UI_ATTRS.concat(config.BIND_UI_ATTRS);
-	}
+	var augmentsClasses = config.AUGMENTS;
 
-	if (config.SYNC_UI_ATTRS) {
-		configProto._SYNC_UI_ATTRS = COMP_PROTO._SYNC_UI_ATTRS.concat(config.SYNC_UI_ATTRS);
+	if (augmentsClasses && !Lang.isArray(augmentsClasses)) {
+		augmentsClasses = [augmentsClasses];
 	}
 
 	A.mix(component, config);
@@ -410,6 +383,10 @@ Component.create = function(config) {
 	delete component.prototype;
 
 	A.extend(component, extendsClass, configProto);
+
+	if (augmentsClasses) {
+		component = A.Base.build(config.NAME, component, augmentsClasses, { dynamic: false });
+	}
 
 	return component;
 };

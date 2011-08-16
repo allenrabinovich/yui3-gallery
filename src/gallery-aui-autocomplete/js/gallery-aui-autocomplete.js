@@ -638,6 +638,19 @@ var AutoComplete = A.Component.create(
 			},
 
 			/**
+			 * Descructor lifecycle implementation for the Autocomplete class.
+			 * Purges events attached to the node (and all child nodes).
+			 *
+			 * @method destructor
+			 * @protected
+			 */
+			destructor: function() {
+				var instance = this;
+
+				instance.overlay.destroy();
+			},
+
+			/**
 			 * An overridable method that is executed before the result container is shown.
 			 * The method can return false to prevent the container from being shown.
 			 *
@@ -854,6 +867,8 @@ var AutoComplete = A.Component.create(
 			 */
 			_createDataSource: function() {
 				var instance = this;
+
+				instance._queryTask = new A.DelayedTask(instance.sendQuery, instance);
 
 				var dataSource = instance.get('dataSource');
 				var data = dataSource;
@@ -1573,16 +1588,7 @@ var AutoComplete = A.Component.create(
 					return;
 				}
 
-				if (instance._delayId != -1) {
-					clearTimeout(instance._delayId);
-				}
-
-				instance._delayId = setTimeout(
-					function() {
-						instance._sendQuery(value);
-					},
-					instance.get('queryDelay')
-				);
+				instance._queryTask.delay(instance.get('queryDelay'), null, null, [value]);
 			},
 
 			/**
@@ -1885,9 +1891,7 @@ var AutoComplete = A.Component.create(
 				}
 
 				if ((query && (query.length < minQueryLength)) || (!query && minQueryLength > 0)) {
-					if (instance._delayId != -1) {
-						clearTimeout(instance._delayId);
-					}
+					instance._queryTask.cancel();
 
 					instance._toggleContainer(false);
 
@@ -1895,8 +1899,6 @@ var AutoComplete = A.Component.create(
 				}
 
 				query = encodeURIComponent(query);
-
-				instance._delayId = -1;
 
 				if (instance.get('applyLocalFilter')) {
 					instance.dataSource.on('response', instance.filterResults, instance);
@@ -2086,7 +2088,6 @@ var AutoComplete = A.Component.create(
 			},
 
 			_currentQuery: null,
-			_delayId: -1,
 			_displayedItems: 0,
 			_elCurListItem: null,
 			_initInputValue: null,

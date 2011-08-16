@@ -90,4 +90,4 @@ if (A.UA.ie) {
 }
 
 
-}, 'gallery-2010.06.07-17-52' ,{requires:['collection','gallery-aui-base']});
+}, 'gallery-2011.02.09-21-32' ,{requires:['collection','gallery-aui-base']});

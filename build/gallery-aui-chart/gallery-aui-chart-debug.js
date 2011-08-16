@@ -39,9 +39,6 @@ var Chart = A.Component.create(
 			request: {
 				value: '*'
 			},
-			dataSource: {
-				value: null
-			},
 			series: {
 				value: null
 			},
@@ -133,7 +130,7 @@ var Chart = A.Component.create(
 					flashVars: {
 						allowedDomain: document.location.hostname
 					},
-					backgroundColor: contentBox.getComputedStyle('backgroundColor'),
+					backgroundColor: contentBox.getStyle('backgroundColor'),
 					url: instance.get('swfURL'),
 					height: instance.get('height'),
 					width: instance.get('width'),
@@ -175,11 +172,14 @@ var Chart = A.Component.create(
 
 				instance._swfWidget = new A.SWF(params);
 				instance._swfNode = instance._swfWidget._swf;
-				instance._swf = instance._swfNode.getDOM();
 
-				instance._swfWidget.on('swfReady', instance._eventHandler, instance);
+				if (instance._swfNode) {
+					instance._swf = instance._swfNode.getDOM();
 
-				instance.set('swfCfg', params);
+					instance._swfWidget.on('swfReady', instance._eventHandler, instance);
+
+					instance.set('swfCfg', params);
+				}
 			},
 
 			bindUI: function() {
@@ -1120,4 +1120,4 @@ A.extend(
 A.Chart.StackedColumnSeries = StackedColumnSeries;
 
 
-}, 'gallery-2010.06.07-17-52' ,{requires:['datasource','gallery-aui-swf','json'], skinnable:false});
+}, 'gallery-2011.02.09-21-32' ,{requires:['datasource','gallery-aui-swf','json'], skinnable:false});

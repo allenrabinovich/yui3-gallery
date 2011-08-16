@@ -26,10 +26,6 @@ var L = A.Lang,
 	TREE = 'tree',
 	TREE_DATA = 'tree-data',
 
-	nodeSetter = function(v) {
-		return A.one(v);
-	},
-
 	isTreeNode = function(v) {
 		return ( v instanceof A.TreeNode );
 	},
@@ -84,7 +80,7 @@ var TreeData = A.Component.create(
 			 * @type Node | String
 			 */
 			container: {
-				setter: nodeSetter
+				setter: A.one
 			},
 
 			/**
@@ -141,6 +137,21 @@ var TreeData = A.Component.create(
 				instance.publish('remove', { defaultFn: instance._removeChild });
 
 				TreeData.superclass.initializer.apply(this, arguments);
+			},
+
+			/**
+			 * Descructor lifecycle implementation for the TreeData class.
+			 * Purges events attached to the node (and all child nodes).
+			 *
+			 * @method destructor
+			 * @protected
+			 */
+			destructor: function() {
+				var instance = this;
+
+				instance.eachChildren(function(node) {
+					node.destroy();
+				}, true);
 			},
 
 			/**

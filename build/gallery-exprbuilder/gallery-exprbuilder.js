@@ -3,7 +3,7 @@ YUI.add('gallery-exprbuilder', function(Y) {
 "use strict";
 
 /**********************************************************************
- * <p>Class which helps user to build a query expression.</p>
+ * Widget which helps user to build a query expression.
  * 
  * @module gallery-exprbuilder
  * @class ExpressionBuilder
@@ -13,11 +13,6 @@ YUI.add('gallery-exprbuilder', function(Y) {
 
 function ExpressionBuilder(config)
 {
-	if (arguments.length === 0)	// derived class prototype
-	{
-		return;
-	}
-
 	ExpressionBuilder.superclass.constructor.call(this, config);
 }
 
@@ -197,12 +192,12 @@ ExpressionBuilder.ATTRS =
 	 * 
 	 * @config resetLabel
 	 * @type {String}
-	 * @default "Reset"
+	 * @default "Cancel"
 	 * @writeonce
 	 */
 	resetLabel:
 	{
-		value:     'Reset',
+		value:     'Cancel',
 		validator: Y.Lang.isString,
 		writeOnce: true
 	},
@@ -217,7 +212,7 @@ ExpressionBuilder.ATTRS =
 	 */
 	tooManyParensError:
 	{
-		value:     'The expression contains an extra closing parenthesis at "{context}".',
+		value:     'The expression contains an extra closing parenthesis at "{context}...".',
 		validator: Y.Lang.isString
 	},
 
@@ -230,7 +225,7 @@ ExpressionBuilder.ATTRS =
 	 */
 	unmatchedSingleQuoteError:
 	{
-		value:     'The expression contains an unmatched single quote.',
+		value:     'The expression contains an unmatched single quote at "{context}...".',
 		validator: Y.Lang.isString
 	},
 
@@ -243,7 +238,21 @@ ExpressionBuilder.ATTRS =
 	 */
 	unclosedParenError:
 	{
-		value:     'The expression contains an unclosed parenthesis.',
+		value:     'The expression contains an unclosed parenthesis at "{context}...".',
+		validator: Y.Lang.isString
+	},
+
+	/**
+	 * The error message when the user forgets to select a variable for
+	 * insertion.
+	 * 
+	 * @config noVariableSelectedError
+	 * @type {String}
+	 * @default 'Please choose a variable.'
+	 */
+	noVariableSelectedError:
+	{
+		value:     'Please choose a variable.',
 		validator: Y.Lang.isString
 	}
 };
@@ -309,18 +318,18 @@ function clear(e)
 
 function insertQB(e)
 {
-	if (!this.qb_form.validateForm())
+	var qb = this.get('queryBuilder');
+	if (!qb.validateFields())
 	{
 		e.halt();
 		return;
 	}
 
-	var qb    = this.get('queryBuilder');
 	var query = qb.toDatabaseQuery();
 	if (query.length === 0)
 	{
 		var el = qb.get('contentBox').one('select');
-		this.qb_form.displayMessage(el, 'Please choose a variable.', 'error');
+		qb.displayFieldMessage(el, this.get('noVariableSelectedError'), 'error');
 		e.halt();
 		return;
 	}
@@ -365,9 +374,12 @@ function insertQB(e)
 
 function resetQB(e)
 {
-	this.qb_form.clearMessages();
 	this.get('queryBuilder').reset();
-	e.halt();
+
+	if (e)
+	{
+		e.halt();
+	}
 }
 
 function setValidation(f)
@@ -375,6 +387,14 @@ function setValidation(f)
 	if (f)
 	{
 		var self = this;
+
+		var orig_validateForm = f.validateForm;
+		f.validateForm = function()
+		{
+			resetQB.call(self);
+			orig_validateForm.apply(this, arguments);
+		};
+
 		f.setFunction(this.get('fieldId'), function(form, e)
 		{
 			return self._validateExpression(form, e, this);
@@ -391,14 +411,17 @@ Y.extend(ExpressionBuilder, Y.Widget,
 		setValidation.call(this, config.formMgr);
 		this.after('formMgrChange', function(e)
 		{
+			if (e.prevVal)
+			{
+				e.prevVal.setFunction(this.get('fieldId'), null);
+			}
+
 			setValidation.call(this, e.newVal);
 		});
 	},
 
 	renderUI: function()
 	{
-		var qb_form_name = Y.guid();
-
 		var container = this.get('contentBox');
 		container.set('innerHTML', this._field());
 
@@ -415,10 +438,10 @@ Y.extend(ExpressionBuilder, Y.Widget,
 
 		container.one('.'+this.getClassName('paren')).on('click', paren, this);
 
-		var ops = [ 'and', 'or', 'not' ];
-		for (var i=0; i<ops.length; i++)
+		var op = [ 'and', 'or', 'not' ];
+		for (var i=0; i<op.length; i++)
 		{
-			container.one('.'+this.getClassName(ops[i])).on('click', handler(ops[i]), this);
+			container.one('.'+this.getClassName(op[i])).on('click', handler(op[i]), this);
 		}
 
 		container.one('.'+this.getClassName('clear')).on('click', clear, this);
@@ -428,15 +451,12 @@ Y.extend(ExpressionBuilder, Y.Widget,
 		var qb = this.get('queryBuilder');
 		if (qb)
 		{
-			container.appendChild(Y.Node.create(this._query(qb_form_name)));
+			container.appendChild(Y.Node.create(this._query()));
 
 			qb.render(container.one('.'+this.getClassName('querybuilder')));
 
 			container.one('.'+this.getClassName('insert')).on('click', insertQB, this);
 			container.one('.'+this.getClassName('reset')).on('click', resetQB, this);
-
-			this.qb_form = new Y.FormManager(qb_form_name);
-			this.qb_form.prepareForm();
 		}
 	},
 
@@ -470,14 +490,21 @@ Y.extend(ExpressionBuilder, Y.Widget,
 	{
 		var s     = e.get('value');
 		var paren = 0;
+		var pi    = -1;
 		var quote = false;
+		var qi    = -1;
 		for (var i=0; i<s.length; i++)
 		{
-			if (!quote && s[i] == '(')
+			var c = s.charAt(i);
+			if (!quote && c == '(')
 			{
+				if (paren === 0)
+				{
+					pi = i;
+				}
 				paren++;
 			}
-			else if (!quote && s[i] == ')')
+			else if (!quote && c == ')')
 			{
 				paren--;
 				if (paren < 0)
@@ -490,20 +517,32 @@ Y.extend(ExpressionBuilder, Y.Widget,
 					return false;
 				}
 			}
-			else if (s[i] == '\'' && (i === 0 || s[i-1] != '\\'))
+			else if (c == '\'' && (i === 0 || s.charAt(i-1) != '\\'))
 			{
+				if (!quote)
+				{
+					qi = i;
+				}
 				quote = ! quote;
 			}
 		}
 
-		if (quote)
+		if (quote && (paren === 0 || qi < pi))
 		{
-			form_mgr.displayMessage(e, this.get('unmatchedSingleQuoteError'), 'error');
+			var msg = Y.Lang.substitute(this.get('unmatchedSingleQuoteError'),
+			{
+				context: s.substr(0,qi+1)
+			});
+			form_mgr.displayMessage(e, msg, 'error');
 			return false;
 		}
 		else if (paren > 0)
 		{
-			form_mgr.displayMessage(e, this.get('unclosedParenError'), 'error');
+			var msg = Y.Lang.substitute(this.get('unclosedParenError'),
+			{
+				context: s.substr(0,pi+1)
+			});
+			form_mgr.displayMessage(e, msg, 'error');
 			return false;
 		}
 
@@ -522,7 +561,7 @@ Y.extend(ExpressionBuilder, Y.Widget,
 	{
 		var markup =
 			'<div class="{td}">' +
-				'<textarea id="{tid}" name="{tn}" class="{ta}"></textarea>' +
+				'<textarea id="{tid}" name="{tn}" class="{ff} {ta}"></textarea>' +
 			'</div>' +
 			'<div class="{fctl}">' +
 				'<button class="{pc}">{paren}</button>' +
@@ -535,6 +574,7 @@ Y.extend(ExpressionBuilder, Y.Widget,
 		return Y.Lang.substitute(markup,
 		{
 			td:     this.getClassName('field-container'),
+			ff:     Y.FormManager.field_marker_class,
 			ta:     this.getClassName('field'),
 			tid:    this.get('fieldId'),
 			tn:     this.get('fieldName'),
@@ -554,25 +594,22 @@ Y.extend(ExpressionBuilder, Y.Widget,
 
 	/**
 	 * @protected
-	 * @return {String} markup for the QueryBuilder form
+	 * @return {String} markup for the QueryBuilder
 	 */
-	_query: function(
-		/* string */	qb_form_name)
+	_query: function()
 	{
 		var markup =
-			'<form name="{qbf}">' +
-				'<div class="{qb}"></div>' +
-				'<div class="{qbctl} formmgr-row">' +
-					'<button class="{ic}">{insert}</button>' +
-					'<button class="{rc}">{reset}</button>' +
-				'</div>' +
-			'</form>';
+			'<div class="{qb}"></div>' +
+			'<div class="{qbctl} {fr}">' +
+				'<button class="{ic}">{insert}</button>' +
+				'<button class="{rc}">{reset}</button>' +
+			'</div>';
 
 		return Y.Lang.substitute(markup,
 		{
-			qbf:	qb_form_name,
 			qb:     this.getClassName('querybuilder'),
 			qbctl:  this.getClassName('querybuilder-controls'),
+			fr:     Y.FormManager.row_marker_class,
 			ic:     this.getClassName('insert'),
 			rc:     this.getClassName('reset'),
 			insert: this.get('insertLabel'),
@@ -584,4 +621,4 @@ Y.extend(ExpressionBuilder, Y.Widget,
 Y.ExpressionBuilder = ExpressionBuilder;
 
 
-}, 'gallery-2010.06.07-17-52' ,{requires:['gallery-querybuilder','gallery-formmgr']});
+}, 'gallery-2011.06.29-23-18' ,{requires:['gallery-querybuilder','gallery-formmgr'], skinnable:true});

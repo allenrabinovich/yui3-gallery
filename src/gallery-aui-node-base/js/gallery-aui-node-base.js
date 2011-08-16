@@ -7,35 +7,71 @@
 
 var Lang = A.Lang,
 	isArray = Lang.isArray,
+	isObject = Lang.isObject,
 	isString = Lang.isString,
 	isUndefined = Lang.isUndefined,
 	isValue = Lang.isValue,
 
 	getClassName = A.ClassNameManager.getClassName,
 
-	CLONED_EVENTS = false,
+	CONFIG = A.config,
+
+	NODE_PROTOTYPE = A.Node.prototype,
+
+	STR_EMPTY = '',
+
+	ARRAY_EMPTY_STRINGS = [STR_EMPTY, STR_EMPTY],
 
 	HELPER = 'helper',
 
 	CSS_HELPER_HIDDEN = getClassName(HELPER, 'hidden'),
 	CSS_HELPER_UNSELECTABLE = getClassName(HELPER, 'unselectable'),
 
+	CHILD_NODES = 'childNodes',
+	CREATE_DOCUMENT_FRAGMENT = 'createDocumentFragment',
 	INNER_HTML = 'innerHTML',
 	NEXT_SIBLING = 'nextSibling',
 	NONE = 'none',
 	PARENT_NODE = 'parentNode',
 	SCRIPT = 'script',
-	VALUE = 'value';
 
-	// Event cloning detection support based on pieces from jQuery
+	SUPPORT_CLONED_EVENTS = false,
+
+	VALUE = 'value',
+
+	MAP_BORDER = {
+		b: 'borderBottomWidth',
+		l: 'borderLeftWidth',
+		r: 'borderRightWidth',
+		t: 'borderTopWidth'
+	},
+	MAP_MARGIN = {
+		b: 'marginBottom',
+		l: 'marginLeft',
+		r: 'marginRight',
+		t: 'marginTop'
+	},
+	MAP_PADDING = {
+		b: 'paddingBottom',
+		l: 'paddingLeft',
+		r: 'paddingRight',
+		t: 'paddingTop'
+	};
+
+	/*
+		Parts of this file are used from jQuery (http://jquery.com)
+		Dual-licensed under MIT/GPL
+	*/
 	var div = document.createElement('div');
-	div.innerHTML = '&nbsp;'; // IE throws an error on fireEvent if the element does not have child nodes
+
+	div.style.display = 'none';
+	div.innerHTML = '   <table></table>&nbsp;';
 
 	if (div.attachEvent && div.fireEvent) {
 		div.attachEvent(
 			'onclick',
 			function(){
-				CLONED_EVENTS = true;
+				SUPPORT_CLONED_EVENTS = true;
 
 				div.detachEvent('onclick', arguments.callee);
 			}
@@ -43,6 +79,14 @@ var Lang = A.Lang,
 
 		div.cloneNode(true).fireEvent('onclick');
 	}
+
+	var SUPPORT_OPTIONAL_TBODY = !div.getElementsByTagName('tbody').length;
+
+	var REGEX_LEADING_WHITE_SPACE = /^\s+/,
+		REGEX_IE8_ACTION = /=([^=\x27\x22>\s]+\/)>/g,
+		REGEX_TAGNAME = /<([\w:]+)/;
+
+	div = null;
 
 /**
  * Augment the <a href="Node.html">YUI3 Node</a> with more util methods.
@@ -54,7 +98,7 @@ var Lang = A.Lang,
  * @constructor
  * @uses Node
  */
-A.mix(A.Node.prototype, {
+A.mix(NODE_PROTOTYPE, {
 	/**
 	 * <p>Returns the current ancestors of the node element. If a selector is
 	 * specified, the ancestors are filtered to match the selector.</p>
@@ -173,9 +217,26 @@ A.mix(A.Node.prototype, {
 		var instance = this;
 
 		if (!isUndefined(value)) {
-			return instance.set(name, value);
+			var el = instance.getDOM();
+
+			if (name in el) {
+				instance.set(name, value);
+			}
+			else {
+				instance.setAttribute(name, value);
+			}
+
+			return instance;
 		}
 		else {
+			if (isObject(name)) {
+				for (var i in name) {
+					instance.attr(i, name[i]);
+				}
+
+				return instance;
+			}
+
 			return instance.get(name) || instance.getAttribute(name);
 		}
 	},
@@ -196,9 +257,23 @@ A.mix(A.Node.prototype, {
 	clone: (function() {
 		var clone;
 
-		if (CLONED_EVENTS) {
+		if (SUPPORT_CLONED_EVENTS) {
 			clone = function() {
-				return A.Node.create(this.outerHTML());
+				var el = this.getDOM();
+				var clone;
+
+				if (el.nodeType != 3) {
+					var outerHTML = this.outerHTML();
+
+					outerHTML = outerHTML.replace(REGEX_IE8_ACTION, '="$1">').replace(REGEX_LEADING_WHITE_SPACE, '');
+
+					clone = A.Node.create(outerHTML);
+				}
+				else {
+					clone = A.one(el.cloneNode());
+				}
+
+				return clone;
 			};
 		}
 		else {
@@ -258,7 +333,7 @@ A.mix(A.Node.prototype, {
 	empty: function() {
 		var instance = this;
 
-		instance.all('>*').remove();
+		instance.all('>*').remove().purge();
 
 		var el = A.Node.getDOMNode(instance);
 
@@ -280,6 +355,48 @@ A.mix(A.Node.prototype, {
 		var instance = this;
 
 		return A.Node.getDOMNode(instance);
+	},
+
+	/**
+     * Return the combined width of the border for the specified sides.
+     *
+     * @method getBorderWidth
+     * @param {string} sides Can be t, r, b, l or any combination of
+     * those to represent the top, right, bottom, or left sides.
+     * @return {number}
+     */
+	getBorderWidth: function(sides) {
+		var instance = this;
+
+		return instance._getBoxStyleAsNumber(sides, MAP_BORDER);
+	},
+
+	/**
+     * Return the combined size of the margin for the specified sides.
+     *
+     * @method getMargin
+     * @param {string} sides Can be t, r, b, l or any combination of
+     * those to represent the top, right, bottom, or left sides.
+     * @return {number}
+     */
+	getMargin: function(sides) {
+		var instance = this;
+
+		return instance._getBoxStyleAsNumber(sides, MAP_MARGIN);
+	},
+
+	/**
+     * Return the combined width of the border for the specified sides.
+     *
+     * @method getPadding
+     * @param {string} sides Can be t, r, b, l or any combination of
+     * those to represent the top, right, bottom, or left sides.
+     * @return {number}
+     */
+	getPadding: function(sides) {
+		var instance = this;
+
+		return instance._getBoxStyleAsNumber(sides, MAP_PADDING);
 	},
 
     /**
@@ -304,25 +421,49 @@ A.mix(A.Node.prototype, {
 		return currentId;
 	},
 
-	/**
-     * <p>Hide the node adding a css class on it. If <code>cssClass</code> is not
-     * passed as argument, the className 'aui-helper-hidden' will be used by
-     * default.</p>
+    /**
+     * Create a hover interaction.
      *
-     * <p><string>NOTE:</string> This method assume that your node were visible
-     * because the absence of 'aui-helper-hidden' css class. This won't
-     * manipulate the inline <code>style.display</code> property.</p>
-     *
-     * @method hide
-     * @chainable
-     * @param {string} cssClass Class name to hide the element. Optional.
+     * @method hover
+     * @param {string} overFn
+     * @param {string} outFn
+     * @return {Node} The current Node instance
      */
-	hide: function(cssClass) {
+	hover: function(overFn, outFn) {
 		var instance = this;
 
-		instance.addClass(cssClass || instance._hideClass || CSS_HELPER_HIDDEN);
+		var hoverOptions;
+		var defaultHoverOptions = instance._defaultHoverOptions;
 
-		return instance;
+		if (isObject(overFn, true)) {
+			hoverOptions = overFn;
+
+			hoverOptions = A.mix(hoverOptions, defaultHoverOptions);
+
+			overFn = hoverOptions.over;
+			outFn = hoverOptions.out;
+		}
+		else {
+			hoverOptions = A.mix(
+				{
+					over: overFn,
+					out: outFn
+				},
+				defaultHoverOptions
+			);
+		}
+
+		instance._hoverOptions = hoverOptions;
+
+		var overTask = new A.DelayedTask(instance._hoverOverTaskFn, instance);
+
+		var outTask = new A.DelayedTask(instance._hoverOutTaskFn, instance);
+
+		hoverOptions.overTask = overTask;
+		hoverOptions.outTask = outTask;
+
+		instance.on(hoverOptions.overEventType, instance._hoverOverHandler, instance);
+		instance.on(hoverOptions.outEventType, instance._hoverOutHandler, instance);
 	},
 
 	/**
@@ -370,7 +511,7 @@ A.mix(A.Node.prototype, {
 		}
 
 		var temp = A.Node.create('<div></div>').append(
-			this.cloneNode(true)
+			this.clone()
 		);
 
 		try {
@@ -518,6 +659,10 @@ A.mix(A.Node.prototype, {
 			else {
 				textField.select();
 			}
+
+			if (textField != document.activeElement) {
+				textField.focus();
+			}
 		}
 		catch(e) {}
 
@@ -544,28 +689,6 @@ A.mix(A.Node.prototype, {
 		);
 
 		instance.removeClass(CSS_HELPER_UNSELECTABLE);
-
-		return instance;
-	},
-
-	/**
-     * <p>Show the node removing a css class used to hide it. Use the same
-     * className added using the <a href="A.Node.html#method_hide">hide</a>
-     * method. If <code>cssClass</code> is not passed as argument, the
-     * className 'aui-helper-hidden' will be used by default.</p>
-     *
-     * <p><string>NOTE:</string> This method assume that your node were hidden
-     * because of the 'aui-helper-hidden' css class were being used. This won't
-     * manipulate the inline <code>style.display</code> property.</p>
-     *
-     * @method show
-     * @chainable
-     * @param {string} cssClass Class name to hide the element. Optional.
-     */
-	show: function(cssClass) {
-		var instance = this;
-
-		instance.removeClass(cssClass || instance._hideClass || CSS_HELPER_HIDDEN);
 
 		return instance;
 	},
@@ -656,19 +779,13 @@ A.mix(A.Node.prototype, {
 	 *
      * @method toggle
      * @chainable
-     * @param {String} cssClass Class name to hide or show the element. Optional.
+     * @param {Boolean} on Whether to force the toggle. Optional.
+     * @param {Function} callback A function to run after the visibility change. Optional.
      */
-	toggle: function(cssClass) {
+	toggle: function(on, callback) {
 		var instance = this;
 
-		var action = 'hide';
-		var hideClass = cssClass || instance._hideClass || CSS_HELPER_HIDDEN;
-
-		if (instance.hasClass(hideClass)) {
-			action = 'show';
-		}
-
-		instance[action](hideClass);
+		instance._toggleView.apply(instance, arguments);
 
 		return instance;
 	},
@@ -725,6 +842,38 @@ A.mix(A.Node.prototype, {
 		}
 	},
 
+	/**
+     * Return the combined size of the box style for the specified sides.
+     *
+     * @method _getBoxStyleAsNumber
+     * @param {string} sides Can be t, r, b, l or any combination of
+     * those to represent the top, right, bottom, or left sides.
+     * @param {string} map An object mapping mapping the "sides" param to the a CSS value to retrieve
+     * @return {number}
+     */
+	_getBoxStyleAsNumber: function(sides, map) {
+		var instance = this;
+
+		var sidesArray = sides.match(/\w/g);
+		var value = 0;
+		var side;
+		var sideKey;
+
+		for (var i = sidesArray.length - 1; i >= 0; i--) {
+			sideKey = sidesArray[i];
+			side = 0;
+
+			if (sideKey) {
+				side = parseFloat(instance.getComputedStyle(map[sideKey]));
+				side = Math.abs(side);
+
+				value += side || 0;
+			}
+		}
+
+		return value;
+	},
+
     /**
      * Extract text content from the passed nodes.
 	 *
@@ -758,6 +907,70 @@ A.mix(A.Node.prototype, {
 	},
 
 	/**
+     * The event handler for the "out" function that is fired for events attached via the hover method.
+	 *
+     * @method _hoverOutHandler
+     * @private
+     * @param {EventFacade} event
+     */
+	_hoverOutHandler: function(event) {
+		var instance = this;
+
+		var hoverOptions = instance._hoverOptions;
+
+		hoverOptions.outTask.delay(hoverOptions.outDelay, null, null, [event]);
+	},
+
+	/**
+     * The event handler for the "over" function that is fired for events attached via the hover method.
+	 *
+     * @method _hoverOverHandler
+     * @private
+     * @param {EventFacade} event
+     */
+	_hoverOverHandler: function(event) {
+		var instance = this;
+
+		var hoverOptions = instance._hoverOptions;
+
+		hoverOptions.overTask.delay(hoverOptions.overDelay, null, null, [event]);
+	},
+
+	/**
+     * Cancels the over task, and fires the users custom "out" function for the hover method
+	 *
+     * @method _hoverOverHandler
+     * @private
+     * @param {EventFacade} event
+     */
+	_hoverOutTaskFn: function(event) {
+		var instance = this;
+
+		var hoverOptions = instance._hoverOptions;
+
+		hoverOptions.overTask.cancel();
+
+		hoverOptions.out.apply(hoverOptions.context || event.currentTarget, arguments);
+	},
+
+	/**
+     * Cancels the out task, and fires the users custom "over" function for the hover method
+	 *
+     * @method _hoverOverHandler
+     * @private
+     * @param {EventFacade} event
+     */
+	_hoverOverTaskFn: function(event) {
+		var instance = this;
+
+		var hoverOptions = instance._hoverOptions;
+
+		hoverOptions.outTask.cancel();
+
+		hoverOptions.over.apply(hoverOptions.context || event.currentTarget, arguments);
+	},
+
+	/**
      * Place a node or html string at a specific location
 	 *
      * @method _place
@@ -771,7 +984,7 @@ A.mix(A.Node.prototype, {
 		var parent = instance.get(PARENT_NODE);
 
 		if (parent) {
-			if (Lang.isString(newNode)) {
+			if (isString(newNode)) {
 				newNode = A.Node.create(newNode);
 			}
 
@@ -779,8 +992,108 @@ A.mix(A.Node.prototype, {
 		}
 
 		return instance;
+	},
+
+	_defaultHoverOptions: {
+		overEventType: 'mouseenter',
+		outEventType: 'mouseleave',
+		overDelay: 0,
+		outDelay: 0,
+		over: Lang.emptyFn,
+		out: Lang.emptyFn
 	}
 }, true);
+
+NODE_PROTOTYPE.__show = NODE_PROTOTYPE._show;
+NODE_PROTOTYPE.__hide = NODE_PROTOTYPE._hide;
+NODE_PROTOTYPE.__isHidden = NODE_PROTOTYPE._isHidden;
+
+NODE_PROTOTYPE._isHidden = function() {
+	var instance = this;
+
+	return NODE_PROTOTYPE.__isHidden.call(instance) || instance.hasClass(instance._hideClass || CSS_HELPER_HIDDEN);
+};
+/**
+ * <p>Hide the node adding a css class on it. If <code>cssClass</code> is not
+ * passed as argument, the className 'aui-helper-hidden' will be used by
+ * default.</p>
+ *
+ * <p><string>NOTE:</string> This method assume that your node were visible
+ * because the absence of 'aui-helper-hidden' css class. This won't
+ * manipulate the inline <code>style.display</code> property.</p>
+ *
+ * @method hide
+ * @chainable
+ * @param {string} cssClass Class name to hide the element. Optional.
+ */
+NODE_PROTOTYPE._hide = function() {
+	var instance = this;
+
+	instance.addClass(instance._hideClass || CSS_HELPER_HIDDEN);
+
+	return instance;
+};
+
+/**
+ * <p>Show the node removing a css class used to hide it. Use the same
+ * className added using the <a href="A.Node.html#method_hide">hide</a>
+ * method. If <code>cssClass</code> is not passed as argument, the
+ * className 'aui-helper-hidden' will be used by default.</p>
+ *
+ * <p><string>NOTE:</string> This method assume that your node were hidden
+ * because of the 'aui-helper-hidden' css class were being used. This won't
+ * manipulate the inline <code>style.display</code> property.</p>
+ *
+ * @method show
+ * @chainable
+ * @param {string} cssClass Class name to hide the element. Optional.
+ */
+NODE_PROTOTYPE._show = function() {
+	var instance = this;
+
+	instance.removeClass(instance._hideClass || CSS_HELPER_HIDDEN);
+
+	return instance;
+};
+
+if (!SUPPORT_OPTIONAL_TBODY) {
+	A.DOM._ADD_HTML = A.DOM.addHTML;
+
+	A.DOM.addHTML = function(node, content, where) {
+		var nodeName = (node.nodeName && node.nodeName.toLowerCase()) || '';
+
+		var tagName;
+
+		if (!isUndefined(content)) {
+			if (isString(content)) {
+				tagName = (REGEX_TAGNAME.exec(content) || ARRAY_EMPTY_STRINGS)[1];
+			}
+			else if (content.nodeType && content.nodeType == 11 && content.childNodes.length) { // a doc frag
+				tagName = content.childNodes[0].nodeName;
+			}
+			else if (content.nodeName) { // a node
+				tagName = content.nodeName;
+			}
+
+			tagName = tagName.toLowerCase();
+		}
+
+		if (nodeName == 'table' && tagName == 'tr') {
+			node = node.getElementsByTagName('tbody')[0] || node.appendChild(node.ownerDocument.createElement('tbody'));
+
+			var whereNodeName = ((where && where.nodeName) || STR_EMPTY).toLowerCase();
+
+			// Assuming if the "where" is a tbody node,
+			// we're trying to prepend to a table. Attempt to
+			// grab the first child of the tbody.
+			if (whereNodeName == 'tbody' && where.childNodes.length > 0) {
+				where = where.firstChild;
+			}
+		}
+
+		return A.DOM._ADD_HTML(node, content, where);
+	};
+}
 
 /**
  * Augment the <a href="NodeList.html">YUI3 NodeList</a> with more util methods.
@@ -793,7 +1106,7 @@ A.mix(A.Node.prototype, {
  * @uses A.Node
  */
 A.NodeList.importMethod(
-	A.Node.prototype,
+	NODE_PROTOTYPE,
 	[
 		'after',
 
@@ -805,7 +1118,7 @@ A.NodeList.importMethod(
 
 		'empty',
 
-		'hide',
+		'hover',
 
 		'html',
 
@@ -815,11 +1128,11 @@ A.NodeList.importMethod(
 
 		'prependTo',
 
+		'purge',
+
 		'selectText',
 
 		'selectable',
-
-		'show',
 
 		'text',
 
@@ -862,6 +1175,18 @@ A.mix(
 		},
 
 		/**
+		 * Returns the first element in the node list collection.
+		 *
+		 * @method first
+		 * @return {Node}
+		 */
+		first: function() {
+			var instance = this;
+
+			return instance.item(0);
+		},
+
+		/**
 	     * See <a href="Node.html#method_getDOM">Node getDOM</a>.
 	     *
 	     * @method getDOM
@@ -870,6 +1195,18 @@ A.mix(
 			var instance = this;
 
 			return A.NodeList.getDOMNodes(this);
+		},
+
+		/**
+		 * Returns the last element in the node list collection.
+		 *
+		 * @method last
+		 * @return {Node}
+		 */
+		last: function() {
+			var instance = this;
+
+			return instance.item(instance._nodes.length - 1);
 		},
 
 		/**
@@ -901,6 +1238,17 @@ A.mix(
 );
 
 A.mix(
+	A.NodeList,
+	{
+		create: function(html) {
+			var docFrag = A.getDoc().invoke(CREATE_DOCUMENT_FRAGMENT);
+
+			return docFrag.append(html).get(CHILD_NODES);
+		}
+	}
+);
+
+A.mix(
 	A,
 	{
 		/**
@@ -912,7 +1260,7 @@ A.mix(
 			var instance = this;
 
 			if (!instance._bodyNode) {
-				instance._bodyNode = A.one(document.body);
+				instance._bodyNode = A.one(CONFIG.doc.body);
 			}
 
 			return instance._bodyNode;
@@ -927,7 +1275,7 @@ A.mix(
 			var instance = this;
 
 			if (!instance._documentNode) {
-				instance._documentNode = A.one(document);
+				instance._documentNode = A.one(CONFIG.doc);
 			}
 
 			return instance._documentNode;
@@ -942,7 +1290,7 @@ A.mix(
 			var instance = this;
 
 			if (!instance._windowNode) {
-				instance._windowNode = A.one(window);
+				instance._windowNode = A.one(CONFIG.win);
 			}
 
 			return instance._windowNode;

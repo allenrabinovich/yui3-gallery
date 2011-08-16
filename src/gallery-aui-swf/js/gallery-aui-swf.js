@@ -112,6 +112,25 @@ var SWF = A.Component.create(
 			}
 		},
 
+		constructor: function(config) {
+			var instance = this;
+
+			if (arguments.length > 1) {
+				var boundingBox = arguments[0];
+				var url = arguments[1];
+				var params = arguments[2] || {};
+
+				config = {
+					boundingBox: boundingBox,
+					url: url,
+					fixedAttributes: params.fixedAttributes,
+					flashVars: params.flashVars
+				};
+			}
+
+			SWF.superclass.constructor.call(this, config);
+		},
+
 		getFlashVersion: function() {
 			return VERSION;
 		},
@@ -143,7 +162,7 @@ var SWF = A.Component.create(
 
 				instance._swfId = swfId;
 
-				var boundingBox = instance.get('boundingBox');
+				var contentBox = instance.get('contentBox');
 				var flashVars = instance.get('flashVars');
 
 				A.mix(
@@ -186,7 +205,7 @@ var SWF = A.Component.create(
 
 					tplObj += '</object>';
 
-					boundingBox.set('innerHTML', tplObj);
+					contentBox.set('innerHTML', tplObj);
 				}
 
 				instance._swf = A.one('#' + swfId);
@@ -226,7 +245,7 @@ var SWF = A.Component.create(
 			_eventHandler: function(event) {
 				var instance = this;
 
-				var eventType = event.type;
+				var eventType = event.type.replace(/Event$/, '');
 
 				if (eventType != 'log') {
 					instance.fire(eventType, event);

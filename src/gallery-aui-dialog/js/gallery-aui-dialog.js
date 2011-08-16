@@ -94,6 +94,10 @@ var L = A.Lang,
  * @class Dialog
  * @constructor
  * @extends Panel
+ * @uses WidgetPosition
+ * @uses WidgetStack
+ * @uses WidgetPositionAlign
+ * @uses WidgetPositionConstrain
  */
 var Dialog = function(config) {
 	if (!A.DialogMask) {
@@ -354,6 +358,7 @@ Dialog.prototype = {
 		var boundingBox = instance.get(BOUNDING_BOX);
 
 		A.Event.purgeElement(boundingBox, true);
+		A.DialogManager.remove(instance);
 	},
 
 	/**
@@ -381,6 +386,20 @@ Dialog.prototype = {
 		var instance = this;
 
 		instance.fire('close');
+	},
+
+	/**
+	 * Fires after the value of the
+	 * <a href="Dialog.html#config_constrain2view">constrain2view</a> attribute change.
+	 *
+	 * @method 
+	 * @param {EventFacade} event
+	 * @protected
+	 */
+	_afterConstrain2viewChange: function(event) {
+		var instance = this;
+
+		instance._setConstrain2view(event.newVal);
 	},
 
 	/**
@@ -439,7 +458,7 @@ Dialog.prototype = {
 		A.each(
 			buttons,
 			function(button, i) {
-				var node = nodeModel.cloneNode();
+				var node = nodeModel.clone();
 
 				if (button.isDefault) {
 					node.addClass(CSS_DIALOG_BUTTON_DEFAULT);
@@ -476,6 +495,35 @@ Dialog.prototype = {
 
 		if (!instance.get(RESIZABLE_INSTANCE) && instance.get(RESIZABLE)) {
 			instance.get(RESIZABLE);
+		}
+	},
+
+	/**
+	 * Setter for the <a href="Dialog.html#config_constrain2view">constrain2view</a>
+     * attributte. Plugs or unplugs the DDConstrained plugin on the drag instance.
+	 *
+	 * @method _setConstrain2view
+	 * @param {Object} value Object to be passed to the A.DD.Drag constructor.
+	 * @protected
+	 * @return {Object}
+	 */
+	_setConstrain2view: function(value) {
+		var instance = this;
+
+		var dragInstance = instance.get(DRAG_INSTANCE);
+
+		if (dragInstance) {
+			if (value) {
+				dragInstance.plug(
+					A.Plugin.DDConstrained,
+					{
+						constrain2view: instance.get(CONSTRAIN_TO_VIEWPORT)
+					}
+				);
+			}
+			else {
+				dragInstance.unplug(A.Plugin.DDConstrained);
+			}
 		}
 	},
 
@@ -526,14 +574,11 @@ Dialog.prototype = {
 
 			var dragInstance = new A.DD.Drag(dragOptions);
 
-			dragInstance.plug(
-				A.Plugin.DDConstrained,
-				{
-					constrain2view: instance.get(CONSTRAIN_TO_VIEWPORT)
-				}
-			);
-
 			instance.set(DRAG_INSTANCE, dragInstance);
+
+			instance.after('constrain2viewChange', instance._afterConstrain2viewChange, instance);
+
+			instance._setConstrain2view(instance.get('constrain2view'));
 		}
 		else {
 			destroy();
@@ -589,8 +634,8 @@ Dialog.prototype = {
 
 				if ((type == EV_RESIZE_END) ||
 					((type == EV_RESIZE) && !event.currentTarget.get(PROXY))) {
-						instance.set(HEIGHT, info.height);
-						instance.set(WIDTH, info.width);
+						instance.set(HEIGHT, info.offsetHeight);
+						instance.set(WIDTH, info.offsetWidth);
 				}
 			};
 

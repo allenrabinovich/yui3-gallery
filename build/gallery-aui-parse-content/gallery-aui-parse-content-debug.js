@@ -1,9 +1,10 @@
 YUI.add('gallery-aui-parse-content', function(A) {
 
 /**
- * The ParseContent Utility - Parse a content in a way of all the javascripts
- * within a content will be executed according to the order of apparition.
- *
+ * The ParseContent Utility - Parse the content of a Node so that all of the 
+ * javascript contained in that Node will be executed according to the order
+ * that it appears.
+ * 
  * @module aui-parse-content
  */
 
@@ -16,7 +17,6 @@ var L = A.Lang,
 	isString = L.isString,
 
 	APPEND = 'append',
-	CREATE_DOCUMENT_FRAGMENT = 'createDocumentFragment',
 	DOCUMENT_ELEMENT = 'documentElement',
 	FIRST_CHILD = 'firstChild',
 	HEAD = 'head',
@@ -192,7 +192,7 @@ var ParseContent = A.Component.create(
 			 */
 			_clean: function(content) {
 				var output = {};
-				var fragment = A.getDoc().invoke(CREATE_DOCUMENT_FRAGMENT);
+				var fragment = A.Node.create('<div></div>');
 
 				// instead of fix all tags to "XHTML"-style, make the firstChild be a valid non-empty tag
 				fragment.append('<div>_</div>');
@@ -215,7 +215,7 @@ var ParseContent = A.Component.create(
 				// remove padding node
 				fragment.get(FIRST_CHILD).remove();
 
-				output.fragment = fragment;
+				output.fragment = fragment.get('childNodes').toFrag();
 
 				return output;
 			},
@@ -272,4 +272,4 @@ var ParseContent = A.Component.create(
 A.namespace('Plugin').ParseContent = ParseContent;
 
 
-}, 'gallery-2010.06.07-17-52' ,{skinnable:false, requires:['async-queue','gallery-aui-base','io','plugin']});
+}, 'gallery-2011.02.09-21-32' ,{skinnable:false, requires:['async-queue','gallery-aui-base','plugin']});
