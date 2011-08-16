@@ -1,0 +1,1 @@
+YUI.add("gallery-patch-340-multicalendar",function(a){a.CalendarBase.prototype.initializer=function(){this._paneProperties={};this._calendarId=a.guid("calendar");this._selectedDates={};this._rules={};this.storedDateCells={};};},"@VERSION@",{requires:["calendar-base"]});
