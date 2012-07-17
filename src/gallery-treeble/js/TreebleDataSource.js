@@ -1,5 +1,9 @@
 "use strict";
 
+/**
+ * @module gallery-treeble
+ */
+
 /**********************************************************************
  * <p>Hierarchical data source.</p>
  *
@@ -9,13 +13,15 @@
  * paginateChildren:true.</p>
  * 
  * <p>The tree must be immutable.  The total number of items available from
- * each DataSource must remain constant.</p>
+ * each DataSource must remain constant.  (The one exception to this rule
+ * is that filtering and sorting are allowed.  This is done by detecting
+ * that the request parameters have changed.)</p>
  * 
- * @module gallery-treeble
- * @class TreebleDataSource
+ * @namespace DataSource
+ * @class Treeble
  * @extends DataSource.Local
  * @constructor
- * @param config {Object} Widget configuration
+ * @param config {Object}
  */
 
 function TreebleDataSource()
@@ -76,7 +82,7 @@ TreebleDataSource.ATTRS =
 	 *		<code>totalRecordsExpr</code> takes priority.</dd>
 	 * </dl>
 	 * 
-	 * @config root
+	 * @attribute root
 	 * @type {DataSource}
 	 * @writeonce
 	 */
@@ -90,7 +96,7 @@ TreebleDataSource.ATTRS =
 	 * nodes into the list.  The default (<code>false</code>) is to
 	 * paginate only root nodes, so all children are visible.
 	 * 
-	 * @config paginateChildren
+	 * @attribute paginateChildren
 	 * @type {boolean}
 	 * @default false
 	 * @writeonce
@@ -107,7 +113,7 @@ TreebleDataSource.ATTRS =
 	 * across the entire tree.  If this is not specified, then all nodes
 	 * will close when the data is sorted.
 	 * 
-	 * @config uniqueIdKey
+	 * @attribute uniqueIdKey
 	 * @type {String}
 	 */
 	uniqueIdKey:
@@ -197,6 +203,8 @@ function populateOpen(
 					item.childTotal = cached_item.childTotal;
 					this._redo      = this._redo || item.open;
 				}
+
+				this._open_cache[ data[k][ uniqueIdKey ] ] = item;
 			}
 
 			if (!cached_item && nodeOpenKey && data[k][ nodeOpenKey ])
@@ -205,7 +213,6 @@ function populateOpen(
 			}
 
 			open.splice(j, 0, item);
-			this._open_cache[ data[k][ uniqueIdKey ] ] = item;
 		}
 
 		j++;
@@ -470,7 +477,7 @@ function getVisibleSlicesPgAll(
 			var info = getVisibleSlicesPgAll(skip, show, rootDS, node.children,
 											 path.concat(node.index),
 											 node, pre+n, send, slices);
-			if (info instanceof Array)
+			if (Y.Lang.isArray(info))
 			{
 				return info;
 			}
@@ -580,7 +587,7 @@ function findRequest(
 function treeSuccess(e, reqIndex)
 {
 	if (!e.response || e.error ||
-		!(e.response.results instanceof Array))
+		!Y.Lang.isArray(e.response.results))
 	{
 		treeFailure.apply(this, arguments);
 		return;
@@ -708,7 +715,7 @@ function checkFinished()
 	}
 	else if (this._toggle.length > 0)
 	{
-		this.toggle(this._toggle[0], Y.clone(this._callback.request),
+		this.toggle(this._toggle[0], Y.clone(this._callback.request, true),
 		{
 			fn: function()
 			{
@@ -719,8 +726,8 @@ function checkFinished()
 		return;
 	}
 
-	var response = {};
-	Y.mix(response, this._topResponse);
+	var response = { meta:{} };
+	Y.mix(response, this._topResponse, true);
 	response.results = [];
 	response         = Y.clone(response, true);
 
@@ -792,6 +799,28 @@ function complete(f)
 	}
 }
 
+function compareRequests(r1, r2)
+{
+	var k1 = Y.Object.keys(r1),
+		k2 = Y.Object.keys(r2);
+
+	if (k1.length != k2.length)
+	{
+		return false;
+	}
+
+	for (var i=0; i<k1.length; i++)
+	{
+		var k = k1[i];
+		if (k != 'startIndex' && k != 'resultCount' && r1[k] !== r2[k])
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 Y.extend(TreebleDataSource, Y.DataSource.Local,
 {
 	initializer: function(config)
@@ -841,6 +870,7 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 	},
 
 	/**
+	 * @method isOpen
 	 * @param path {Array} Path to node
 	 * @return {boolean} true if the node is open
 	 */
@@ -866,6 +896,7 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 	 * DataSource.  Any code that assumes the node has been opened must be
 	 * passed in as a completion function.
 	 * 
+	 * @method toggle
 	 * @param path {Array} Path to the node
 	 * @param request {Object} {sort,dir,startIndex,resultCount}
 	 * @param completion {Function|Object} Function to call when the operation completes.  Can be object: {fn,scope,args}
@@ -909,21 +940,11 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 
 	_defRequestFn: function(e)
 	{
-		if (this._callback)
-		{
-			Y.Object.some(this._callback.request, function(value, key)
-			{
-				if (key == 'startIndex' || key == 'resultCount')
-				{
-					return false;
-				}
+		// wipe out all state if the request parameters change
 
-				if (value !== e.request[key])
-				{
-					this._open = [];
-					return true;
-				}
-			});
+		if (this._callback && !compareRequests(this._callback.request, e.request))
+		{
+			this._open = [];
 		}
 
 		this._callback = e;
@@ -934,71 +955,9 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 	{
 		this._req    = [];
 		this._toggle = [];
+		delete this._topResponse;
 	}
 });
 
 Y.TreebleDataSource = TreebleDataSource;
-
-/**
- * <p>Converts data to a DataSource.  Data can be an object containing both
- * <code>dataType</code> and <code>liveData</code>, or it can be <q>free
- * form</q>, e.g., an array of records or an XHR URL.</p>
- *
- * @method Y.Parsers.treebledatasource
- * @param oData {mixed} Data to convert.
- * @return {DataSource} The new data source.
- * @static
- */
-Y.namespace("Parsers").treebledatasource = function(oData)
-{
-	if (!oData)
-	{
-		return null;
-	}
-
-	var type = oData.dataType;
-	if (type)
-	{
-		// use it
-	}
-	else if (Y.Lang.isString(oData))
-	{
-		type = 'IO';
-	}
-	else if (Y.Lang.isFunction(oData))
-	{
-		type = 'Function';
-	}
-	else
-	{
-		type = 'Local';
-	}
-
-	var src            = oData.dataType ? oData.liveData : oData;
-	var treeble_config = this.get('host').treeble_config;
-	if (type == 'Local')
-	{
-		treeble_config = Y.clone(treeble_config, true);
-		delete treeble_config.startIndexExpr;
-		delete treeble_config.totalRecordsExpr;
-	}
-	else if (type == 'Function')
-	{
-		src = Y.Lang.isString(src) ? window[ src ] : src;
-	}
-
-	var ds            = new Y.DataSource[ type ]({ source: src });
-	ds.treeble_config = treeble_config;
-
-	if (ds.treeble_config.schemaPluginConfig)
-	{
-		ds.plug(Y.clone(ds.treeble_config.schemaPluginConfig, true));
-	}
-
-	if (ds.treeble_config.cachePluginConfig)
-	{
-		ds.plug(Y.clone(ds.treeble_config.cachePluginConfig, true));
-	}
-
-	return ds;
-};
+Y.namespace('DataSource').Treeble = TreebleDataSource;

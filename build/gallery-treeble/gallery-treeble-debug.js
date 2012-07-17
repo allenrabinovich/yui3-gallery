@@ -2,6 +2,10 @@ YUI.add('gallery-treeble', function(Y) {
 
 "use strict";
 
+/**
+ * @module gallery-treeble
+ */
+
 /**********************************************************************
  * <p>Hierarchical data source.</p>
  *
@@ -11,13 +15,15 @@ YUI.add('gallery-treeble', function(Y) {
  * paginateChildren:true.</p>
  * 
  * <p>The tree must be immutable.  The total number of items available from
- * each DataSource must remain constant.</p>
+ * each DataSource must remain constant.  (The one exception to this rule
+ * is that filtering and sorting are allowed.  This is done by detecting
+ * that the request parameters have changed.)</p>
  * 
- * @module gallery-treeble
- * @class TreebleDataSource
+ * @namespace DataSource
+ * @class Treeble
  * @extends DataSource.Local
  * @constructor
- * @param config {Object} Widget configuration
+ * @param config {Object}
  */
 
 function TreebleDataSource()
@@ -78,7 +84,7 @@ TreebleDataSource.ATTRS =
 	 *		<code>totalRecordsExpr</code> takes priority.</dd>
 	 * </dl>
 	 * 
-	 * @config root
+	 * @attribute root
 	 * @type {DataSource}
 	 * @writeonce
 	 */
@@ -92,7 +98,7 @@ TreebleDataSource.ATTRS =
 	 * nodes into the list.  The default (<code>false</code>) is to
 	 * paginate only root nodes, so all children are visible.
 	 * 
-	 * @config paginateChildren
+	 * @attribute paginateChildren
 	 * @type {boolean}
 	 * @default false
 	 * @writeonce
@@ -109,7 +115,7 @@ TreebleDataSource.ATTRS =
 	 * across the entire tree.  If this is not specified, then all nodes
 	 * will close when the data is sorted.
 	 * 
-	 * @config uniqueIdKey
+	 * @attribute uniqueIdKey
 	 * @type {String}
 	 */
 	uniqueIdKey:
@@ -199,6 +205,8 @@ function populateOpen(
 					item.childTotal = cached_item.childTotal;
 					this._redo      = this._redo || item.open;
 				}
+
+				this._open_cache[ data[k][ uniqueIdKey ] ] = item;
 			}
 
 			if (!cached_item && nodeOpenKey && data[k][ nodeOpenKey ])
@@ -207,7 +215,6 @@ function populateOpen(
 			}
 
 			open.splice(j, 0, item);
-			this._open_cache[ data[k][ uniqueIdKey ] ] = item;
 		}
 
 		j++;
@@ -472,7 +479,7 @@ function getVisibleSlicesPgAll(
 			var info = getVisibleSlicesPgAll(skip, show, rootDS, node.children,
 											 path.concat(node.index),
 											 node, pre+n, send, slices);
-			if (info instanceof Array)
+			if (Y.Lang.isArray(info))
 			{
 				return info;
 			}
@@ -582,7 +589,7 @@ function findRequest(
 function treeSuccess(e, reqIndex)
 {
 	if (!e.response || e.error ||
-		!(e.response.results instanceof Array))
+		!Y.Lang.isArray(e.response.results))
 	{
 		treeFailure.apply(this, arguments);
 		return;
@@ -710,7 +717,7 @@ function checkFinished()
 	}
 	else if (this._toggle.length > 0)
 	{
-		this.toggle(this._toggle[0], Y.clone(this._callback.request),
+		this.toggle(this._toggle[0], Y.clone(this._callback.request, true),
 		{
 			fn: function()
 			{
@@ -721,8 +728,8 @@ function checkFinished()
 		return;
 	}
 
-	var response = {};
-	Y.mix(response, this._topResponse);
+	var response = { meta:{} };
+	Y.mix(response, this._topResponse, true);
 	response.results = [];
 	response         = Y.clone(response, true);
 
@@ -794,6 +801,28 @@ function complete(f)
 	}
 }
 
+function compareRequests(r1, r2)
+{
+	var k1 = Y.Object.keys(r1),
+		k2 = Y.Object.keys(r2);
+
+	if (k1.length != k2.length)
+	{
+		return false;
+	}
+
+	for (var i=0; i<k1.length; i++)
+	{
+		var k = k1[i];
+		if (k != 'startIndex' && k != 'resultCount' && r1[k] !== r2[k])
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 Y.extend(TreebleDataSource, Y.DataSource.Local,
 {
 	initializer: function(config)
@@ -843,6 +872,7 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 	},
 
 	/**
+	 * @method isOpen
 	 * @param path {Array} Path to node
 	 * @return {boolean} true if the node is open
 	 */
@@ -868,6 +898,7 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 	 * DataSource.  Any code that assumes the node has been opened must be
 	 * passed in as a completion function.
 	 * 
+	 * @method toggle
 	 * @param path {Array} Path to the node
 	 * @param request {Object} {sort,dir,startIndex,resultCount}
 	 * @param completion {Function|Object} Function to call when the operation completes.  Can be object: {fn,scope,args}
@@ -911,21 +942,11 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 
 	_defRequestFn: function(e)
 	{
-		if (this._callback)
-		{
-			Y.Object.some(this._callback.request, function(value, key)
-			{
-				if (key == 'startIndex' || key == 'resultCount')
-				{
-					return false;
-				}
+		// wipe out all state if the request parameters change
 
-				if (value !== e.request[key])
-				{
-					this._open = [];
-					return true;
-				}
-			});
+		if (this._callback && !compareRequests(this._callback.request, e.request))
+		{
+			this._open = [];
 		}
 
 		this._callback = e;
@@ -936,20 +957,29 @@ Y.extend(TreebleDataSource, Y.DataSource.Local,
 	{
 		this._req    = [];
 		this._toggle = [];
+		delete this._topResponse;
 	}
 });
 
 Y.TreebleDataSource = TreebleDataSource;
+Y.namespace('DataSource').Treeble = TreebleDataSource;
+/**
+ * @module gallery-treeble
+ */
 
 /**
  * <p>Converts data to a DataSource.  Data can be an object containing both
  * <code>dataType</code> and <code>liveData</code>, or it can be <q>free
  * form</q>, e.g., an array of records or an XHR URL.</p>
  *
- * @method Y.Parsers.treebledatasource
+ * @class Parsers
+ */
+
+/**
+ * @method treebledatasource
+ * @static
  * @param oData {mixed} Data to convert.
  * @return {DataSource} The new data source.
- * @static
  */
 Y.namespace("Parsers").treebledatasource = function(oData)
 {
@@ -1005,18 +1035,35 @@ Y.namespace("Parsers").treebledatasource = function(oData)
 	return ds;
 };
 /**********************************************************************
+ * Treeble displays a tree of data in a table.
+ *
  * @module gallery-treeble
- * @class Treeble
+ * @main gallery-treeble
  */
+
+/**
+ * Extension to DataTable for displaying tree data.
+ *
+ * @class Treeble
+ * @extends DataTable
+ * @constructor
+ * @param config {Object}
+ */
+function Treeble()
+{
+	Treeble.superclass.constructor.apply(this, arguments);
+}
+
+Treeble.NAME = "datatable";		// same styling
 
 /**
  * <p>Formatter for open/close twistdown.</p>
  *
- * @method Y.Treeble.twistdownFormatter
- * @param sendRequest {Function} Function that reloads DataTable
+ * @method twistdownFormatter
  * @static
+ * @param sendRequest {Function} Function that reloads DataTable
  */
-Y.namespace("Treeble").buildTwistdownFormatter = function(sendRequest)
+Treeble.buildTwistdownFormatter = function(sendRequest)
 {
 	return function(o)
 	{
@@ -1027,40 +1074,55 @@ Y.namespace("Treeble").buildTwistdownFormatter = function(sendRequest)
 
 		if (o.data[key])
 		{
-			var path  = o.data._yui_node_path;
-			var open  = ds.isOpen(path);
-			var clazz = open ? 'row-open' : 'row-closed';
+			var path = o.data._yui_node_path;
 
 			o.td.addClass('row-toggle');
-			o.td.replaceClass(/row-(open|closed)/, clazz);
+			o.td.replaceClass('row-(open|closed)',
+				ds.isOpen(path) ? 'row-open' : 'row-closed');
 
-			o.td.on('click', function()
+			YUI.Env.add(Y.Node.getDOMNode(o.td), 'click', function()
 			{
 				ds.toggle(path, {}, sendRequest);
 			});
 
-			o.td.set('innerHTML', '<a class="treeble-collapse-nub" href="javascript:void(0);"></a>');
-		}
-		else
-		{
-			o.td.set('innerHTML', '');
+			o.cell.set('innerHTML', '<a class="treeble-expand-nub" href="javascript:void(0);"></a>');
 		}
 
-		return '';
+		return false;	// discard Y.Node instances
 	};
 };
 
 /**
  * <p>Default formatter for indented column.</p>
  *
- * @method Y.Treeble.treeValueFormatter
+ * @method treeValueFormatter
  * @static
  */
-Y.namespace("Treeble").treeValueFormatter = function(o)
+Treeble.treeValueFormatter = function(o)
 {
 	var depth_class = 'treeble-depth-'+o.data._yui_node_depth;
+	o.rowClass     += ' ' + depth_class;
+	o.className    += ' treeble-value';
 	return '<span class="'+depth_class+'">'+o.value+'</span>';
 };
 
+Y.extend(Treeble, Y.DataTable,
+{
+	plug: function(plugin, config)
+	{
+		if (plugin === Y.Plugin.DataTableDataSource)
+		{
+			var recordType = this.get('recordType');
+			recordType.ATTRS[ config.datasource.get('root').treeble_config.childNodesKey ] = {};
+			recordType.ATTRS._yui_node_path  = {};
+			recordType.ATTRS._yui_node_depth = {};
+		}
 
-}, 'gallery-2011.06.01-20-18' ,{requires:['datasource'], skinnable:true});
+		Treeble.superclass.plug.apply(this, arguments);
+	}
+});
+
+Y.Treeble = Treeble;
+
+
+}, 'gallery-2012.05.23-19-56' ,{requires:['datasource'], skinnable:true});
