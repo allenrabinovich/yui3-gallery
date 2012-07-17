@@ -950,4 +950,4 @@ Example usage:
     });
 
 
-}, '@VERSION@' ,{skinnable:true, requires:['base', 'widget', 'widget-parent', 'widget-child', 'node-focusmanager', 'handlebars']});
+}, '@VERSION@' ,{requires:['base', 'widget', 'widget-parent', 'widget-child', 'node-focusmanager', 'handlebars'], skinnable:true});
