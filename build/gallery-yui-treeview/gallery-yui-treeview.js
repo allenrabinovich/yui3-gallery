@@ -332,7 +332,7 @@ Y.WidgetHTMLRenderer.prototype = {
  * to create a visual representation of a hierarchical list
  * of elements.
  * 
- * @module treeview
+ * @module gallery-yui-treeview
  */
 
 /** 
