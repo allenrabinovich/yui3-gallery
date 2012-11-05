@@ -153,6 +153,7 @@ Y.WidgetHTMLRenderer.prototype = {
             content;
 
         this.renderHTML(buffer);
+        this.set("DOMReady", true);
 
         if (!parentNode) {
             content = buffer.join();
